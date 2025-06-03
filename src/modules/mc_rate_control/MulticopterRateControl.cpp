@@ -32,7 +32,7 @@
  ****************************************************************************/
 
 #include "MulticopterRateControl.hpp"
-
+#include <lib/matrix/matrix/math.hpp>
 #include <drivers/drv_hrt.h>
 #include <circuit_breaker/circuit_breaker.h>
 #include <mathlib/math/Limits.hpp>
@@ -69,6 +69,16 @@ MulticopterRateControl::init()
 		return false;
 	}
 
+	if (!_vehicle_attitude_sub.registerCallback()) {
+        PX4_ERR("attitude callback registration failed");
+        return false;
+    }
+
+    if (!_vehicle_attitude_setpoint_sub.registerCallback()) {
+        PX4_ERR("attitude setpoint callback registration failed");
+        return false;
+    }
+
 	return true;
 }
 
@@ -102,6 +112,8 @@ MulticopterRateControl::Run()
 {
 	if (should_exit()) {
 		_vehicle_angular_velocity_sub.unregisterCallback();
+		_vehicle_attitude_sub.unregisterCallback();
+        _vehicle_attitude_setpoint_sub.unregisterCallback();
 		exit_and_cleanup();
 		return;
 	}
@@ -148,6 +160,70 @@ MulticopterRateControl::Run()
 
 		// use rates setpoint topic
 		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
+
+		/* Additional Code (Modified) */ 
+		// Initialize persistent attitude vectors
+		static Vector3f att_cur{0.f, 0.f, 0.f}; // Current attitude (roll, pitch, yaw)
+		static Vector3f att_sp{0.f, 0.f, 0.f};  // Setpoint attitude (roll, pitch, yaw)
+
+		// Check for attitude updates
+		vehicle_attitude_s attitude;
+		if (_vehicle_attitude_sub.update(&attitude)) {
+			// Convert quaternion to Euler angles
+			matrix::Quaternion<float> quaternion(attitude.q[0], attitude.q[1], attitude.q[2], attitude.q[3]);
+			matrix::Euler<float> euler_angles(quaternion);
+			att_cur(0) = euler_angles.phi();   // Roll
+			att_cur(1) = euler_angles.theta(); // Pitch
+			att_cur(2) = euler_angles.psi();   // Yaw
+		}
+
+		// Check for attitude setpoint updates
+		vehicle_attitude_setpoint_s attitude_setpoint;
+		if (_vehicle_attitude_setpoint_sub.update(&attitude_setpoint)) {
+			// Use roll_body, pitch_body, yaw_body by default
+			att_sp(0) = attitude_setpoint.roll_body;  // Roll
+			att_sp(1) = attitude_setpoint.pitch_body; // Pitch
+			att_sp(2) = attitude_setpoint.yaw_body;   // Yaw
+
+			// If q_d is valid, convert quaternion to Euler angles
+			if (attitude_setpoint.q_d) {
+				matrix::Quaternion<float> setpoint_quaternion(attitude_setpoint.q_d[0], attitude_setpoint.q_d[1],
+									     attitude_setpoint.q_d[2], attitude_setpoint.q_d[3]);
+				matrix::Euler<float> setpoint_euler(setpoint_quaternion);
+				att_sp(0) = setpoint_euler.phi();   // Roll
+				att_sp(1) = setpoint_euler.theta(); // Pitch
+				att_sp(2) = setpoint_euler.psi();   // Yaw
+			}
+		}
+
+		// if (_vehicle_attitude_sub.copy(&attitude) && _vehicle_attitude_setpoint_sub.copy(&attitude_setpoint)) {
+		// 	// Convert quaternion to Euler angles (Z-Y-X: yaw, pitch, roll)
+		// 	matrix::Quaternion<float> quaternion(attitude.q[0], attitude.q[1], attitude.q[2], attitude.q[3]);
+		// 	matrix::Euler<float> euler_angles(quaternion); // Construct Euler from Quaternion
+
+		// 	// Store current attitude in a vector (roll, pitch, yaw)
+		// 	Vector3f att_cur;
+		// 	att_cur(0) = euler_angles.phi();   // Roll (X)
+		// 	att_cur(1) = euler_angles.theta(); // Pitch (Y)
+		// 	att_cur(2) = euler_angles.psi();   // Yaw (Z)
+
+		// 	// // Get setpoint Euler angles (typically provided directly)
+		// 	Vector3f att_sp;
+		// 	// att_sp(0) = attitude_setpoint.roll_body;  // Roll
+		// 	// att_sp(1) = attitude_setpoint.pitch_body; // Pitch
+		// 	// att_sp(2) = attitude_setpoint.yaw_body;   // Yaw
+
+		// 	// If attitude_setpoint provides a quaternion (q_d), convert it
+		// 	if (attitude_setpoint.q_d) {
+		// 		matrix::Quaternion<float> setpoint_quaternion(attitude_setpoint.q_d[0], attitude_setpoint.q_d[1],
+		// 														attitude_setpoint.q_d[2], attitude_setpoint.q_d[3]);
+		// 		matrix::Euler<float> setpoint_euler(setpoint_quaternion);
+		// 		att_sp(0) = setpoint_euler.phi();   // Roll
+		// 		att_sp(1) = setpoint_euler.theta(); // Pitch
+		// 		att_sp(2) = setpoint_euler.psi();   // Yaw
+		// 	}
+		// }
+		// /* Additional Code End Here */
 
 		if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
 			// generate the rate setpoint from sticks
@@ -214,7 +290,8 @@ MulticopterRateControl::Run()
 			}
 
 			// run rate controller
-			const Vector3f att_control = _rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
+			// const Vector3f att_control = _rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
+			const Vector3f att_control = _rate_control.update(att_cur, att_sp, rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};

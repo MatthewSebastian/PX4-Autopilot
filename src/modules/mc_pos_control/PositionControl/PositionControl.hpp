@@ -161,7 +161,14 @@ public:
 	 * Set the integral term in xy to 0.
 	 * @see _vel_int
 	 */
-	void resetIntegral() { _vel_int.setZero(); }
+	void resetIntegral() {
+		_vel_int.setZero();
+		sat_sx_int=0;
+		sat_sy_int=0;
+		sat_sz_int=0;
+		sat_ex_int=0;
+		sat_ey_int=0;
+	}
 
 	/**
 	 * If set, the tilt setpoint is computed by assuming no vertical acceleration
@@ -199,6 +206,7 @@ private:
 	void _positionControl(); ///< Position proportional control
 	void _velocityControl(const float dt); ///< Velocity PID control
 	void _accelerationControl(); ///< Acceleration setpoint processing
+	void SMC_control(const float dt);
 
 	// Gains
 	matrix::Vector3f _gain_pos_p; ///< Position control proportional gain
@@ -232,4 +240,22 @@ private:
 	matrix::Vector3f _thr_sp; /**< desired thrust */
 	float _yaw_sp{}; /**< desired heading */
 	float _yawspeed_sp{}; /** desired yaw-speed */
+
+	// Custom Controller
+	// Observator
+	float Uxx{};
+	float Uyy{};
+	float sat_sx_int{};
+	float sat_sy_int{};
+	float sat_sz_int{};
+	//**< integral error term of the position
+	float sat_ex_int{};
+	float sat_ey_int{};
+	float sat_ez_int{};
+	matrix::Vector3f xp_x; /**< state estimated  */
+	matrix::Vector3f xp_y; /**< state estimated */
+	// Low pass filter
+	float Statey{NAN};
+	float Statex{NAN};
+
 };

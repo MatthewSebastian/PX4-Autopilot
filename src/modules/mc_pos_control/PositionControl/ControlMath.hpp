@@ -45,6 +45,13 @@
 
 namespace ControlMath
 {
+
+/**
+ * Saturated block for SMC
+ * @param surface siliding mainflod
+ */
+float sat(const float &surface);
+
 /**
  * Converts thrust vector and yaw set-point to a desired attitude.
  * @param thr_sp desired 3D thrust vector

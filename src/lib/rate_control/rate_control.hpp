@@ -51,6 +51,17 @@ public:
 	~RateControl() = default;
 
 	/**
+	 * Set the rate control SMC gains
+	 * @param I 3D vector of Inertia
+	 * @param K1 3D vector of tanh term gains
+	 * @param K2 3D vector of linear term gains
+	 * @param C1 3D vector of sliding surface error term gains
+	 * @param C2 3D vector of sliding surface error term gains
+	 * @param eta 3D vector of the scaling factor gains
+	 */
+	void setSmcGains(const matrix::Vector3f &I, const matrix::Vector3f &K1, const matrix::Vector3f &K2, const matrix::Vector3f &c1, const matrix::Vector3f &c2, const matrix::Vector3f &eta);
+
+	/**
 	 * Set the rate control PID gains
 	 * @param P 3D vector of proportional gains for body x,y,z axis
 	 * @param I 3D vector of integral gains
@@ -93,9 +104,13 @@ public:
 	 * @param dt desired vehicle angular rate setpoint
 	 * @return [-1,1] normalized torque vector to apply to the vehicle
 	 */
-	matrix::Vector3f update(const matrix::Vector3f &rate, const matrix::Vector3f &rate_sp,
-				const matrix::Vector3f &angular_accel, const float dt, const bool landed);
+	// matrix::Vector3f update(const matrix::Vector3f &rate, const matrix::Vector3f &rate_sp,
+	// 			const matrix::Vector3f &angular_accel, const float dt, const bool landed);
 
+	matrix::Vector3f update(const matrix::Vector3f &att_cur, const matrix::Vector3f &att_sp, const matrix::Vector3f &rate, 
+				 const matrix::Vector3f &rate_sp, const matrix::Vector3f &angular_accel,
+			     const float dt, const bool landed);
+	
 	/**
 	 * Set the integral term to 0 to prevent windup
 	 * @see _rate_int
@@ -123,12 +138,23 @@ public:
 private:
 	void updateIntegral(matrix::Vector3f &rate_error, const float dt);
 
-	// Gains
+	// PID Gains
 	matrix::Vector3f _gain_p; ///< rate control proportional gain for all axes x, y, z
 	matrix::Vector3f _gain_i; ///< rate control integral gain
 	matrix::Vector3f _gain_d; ///< rate control derivative gain
 	matrix::Vector3f _lim_int; ///< integrator term maximum absolute value
 	matrix::Vector3f _gain_ff; ///< direct rate to torque feed forward gain only useful for helicopters
+
+	// SMC Gains
+	matrix::Vector3f _gain_I{0.029f, 0.029f, 0.055f};   // Overall gain (replacing I)
+    matrix::Vector3f _gain_k1{3.2f, 3.2f, 4.3f};  // Gain for tanh term
+    matrix::Vector3f _gain_k2{1.2f, 3.2f, 4.3f};  // Gain for linear term
+    matrix::Vector3f _gain_c1{4.4f, 4.4f, 5.f};   // Coefficient for error term in sliding surface
+	matrix::Vector3f _gain_c2{4.4f, 4.4f, 5.f};   // Coefficient for error term in sliding surface
+    matrix::Vector3f _gain_eta{0.5f, 0.5f, 0.5f}; // Scaling factor for tanh
+
+	matrix::Vector3f _rate_sp_prev{0.f, 0.f, 0.f}; // Previous rate setpoint
+    bool _first_update{true};                      // Flag for initial update
 
 	// States
 	matrix::Vector3f _rate_int; ///< integral term of the rate controller

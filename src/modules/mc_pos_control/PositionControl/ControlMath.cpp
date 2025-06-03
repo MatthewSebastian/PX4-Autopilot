@@ -44,6 +44,16 @@ using namespace matrix;
 
 namespace ControlMath
 {
+float sat(const float &surface)
+{
+	if (fabsf(surface) <=1){
+		return surface;
+	}
+	else {
+		return sign(surface);
+	}
+}
+
 void thrustToAttitude(const Vector3f &thr_sp, const float yaw_sp, vehicle_attitude_setpoint_s &att_sp)
 {
 	bodyzToAttitude(-thr_sp, yaw_sp, att_sp);

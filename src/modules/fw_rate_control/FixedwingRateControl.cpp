@@ -269,6 +269,11 @@ void FixedwingRateControl::Run()
 			return;
 		}
 
+		/* Additional Code (Modified) */ 
+		// Initialize persistent attitude vectors
+		static Vector3f att_cur{0.f, 0.f, 0.f}; // Current attitude (roll, pitch, yaw)
+		static Vector3f att_sp{0.f, 0.f, 0.f};  // Setpoint attitude (roll, pitch, yaw)
+
 		if (_vcontrol_mode.flag_control_rates_enabled) {
 
 			const float airspeed = get_airspeed_and_update_scaling();
@@ -355,7 +360,10 @@ void FixedwingRateControl::Run()
 				}
 
 				// Run attitude RATE controllers which need the desired attitudes from above, add trim.
-				const Vector3f angular_acceleration_setpoint = _rate_control.update(rates, body_rates_setpoint, angular_accel, dt,
+				// const Vector3f angular_acceleration_setpoint = _rate_control.update(rates, body_rates_setpoint, angular_accel, dt,
+				// 		_landed);
+
+				const Vector3f angular_acceleration_setpoint = _rate_control.update(att_cur, att_sp, rates, body_rates_setpoint, angular_accel, dt,
 						_landed);
 
 				const Vector3f gain_ff(_param_fw_rr_ff.get(), _param_fw_pr_ff.get(), _param_fw_yr_ff.get());

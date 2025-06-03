@@ -110,8 +110,9 @@ bool PositionControl::update(const float dt)
 	bool valid = _inputValid();
 
 	if (valid) {
-		_positionControl();
-		_velocityControl(dt);
+		// _positionControl();
+		// _velocityControl(dt);
+		SMC_control(dt);
 
 		_yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
 		_yaw_sp = PX4_ISFINITE(_yaw_sp) ? _yaw_sp : _yaw; // TODO: better way to disable yaw control
@@ -119,6 +120,122 @@ bool PositionControl::update(const float dt)
 
 	// There has to be a valid output acceleration and thrust setpoint otherwise something went wrong
 	return valid && _acc_sp.isAllFinite() && _thr_sp.isAllFinite();
+}
+
+void PositionControl::SMC_control(const float dt)
+{
+	// Gain of Controller
+	float 	k1x = 2,k1y = 2,k1z = 5.55;
+	float	k2x = 2,k2y = 2,k2z = 3.2;
+	float	c1x = 1.5, c1y=1.5, c1z = 5;
+
+	// Gain of Observer
+	float 	lamda1x = 6,lamda2x = 20,lamda3x = 5;
+	float	lamda1y = 6,lamda2y = 20,lamda3y = 5;
+
+	// compute error
+	// sigma_0 ... estimation error
+	ControlMath::setZeroIfNanVector3f(xp_x);
+	ControlMath::setZeroIfNanVector3f(xp_y);
+
+	if (!PX4_ISFINITE(Uxx) || !PX4_ISFINITE(Uyy) ){
+			Uxx = 0.0f;
+			Uyy = 0.0f;
+		}
+
+	float U_comp_x = Uxx ;
+	float U_comp_y = Uyy ;
+
+	float sigma_0_x = _pos(0) - xp_x(0);
+	float sigma_0_y = _pos(1) - xp_y(0);
+
+	float sat_sigmax = ControlMath::sat(sigma_0_x/0.5f);
+	float sat_sigmay = ControlMath::sat(sigma_0_y/0.5f);
+
+	xp_x(0) = xp_x(0) + dt*lamda1x *cbrtf(fabsf(sigma_0_x)*fabsf(sigma_0_x))*sign(sigma_0_x) + (dt*xp_x(1) + (dt*dt/2)*xp_x(2)) ;
+	xp_x(1) = xp_x(1) + dt*lamda2x*cbrtf(fabsf(sigma_0_x))*sign(sigma_0_x) + (dt*xp_x(2)) +  dt*(U_comp_x);
+	xp_x(2) = xp_x(2) + dt*lamda3x*sat_sigmax;
+
+	xp_y(0) = xp_y(0) + dt*lamda1y *cbrtf(fabsf(sigma_0_y)*fabsf(sigma_0_y)*1.0f)*sign(sigma_0_y) + (dt*xp_y(1) + (dt*dt/2)*xp_y(2)) ;
+	xp_y(1) = xp_y(1) + dt*lamda2y*cbrtf(fabsf(sigma_0_y))*sign(sigma_0_y) + (dt*xp_y(2)) +  dt*(U_comp_y);
+	xp_y(2) = xp_y(2) + dt*lamda3y*sat_sigmay;
+
+	float error_x =_pos(0) -_pos_sp(0);
+	float error_y =_pos(1) -_pos_sp(1);
+	float error_z =_pos(2) -_pos_sp(2);
+
+	float sx= c1x*error_x +(xp_x(1) -_vel_sp(0)) ;
+	float sy= c1y*error_y +(xp_y(1) -_vel_sp(1)) ;
+	// z use only Super-Twisting SMC
+	float sz= c1z*error_z +(_vel(2) -_vel_sp(2)) ;
+
+	float sat_sx = ControlMath::sat(sx);
+	float sat_sy = ControlMath::sat(sy);
+	float sat_sz = ControlMath::sat(sz);
+
+	float sat_ex = ControlMath::sat((_pos(0) - xp_x(0)));
+	float sat_ey = ControlMath::sat((_pos(1) - xp_y(0)));
+	// float sat_ez = ControlMath::sat(_pos(2) -_pos_sp(2));
+
+	sat_sx_int += k2x*sat_sx*dt;
+	sat_sy_int += k2y*sat_sy*dt;
+	sat_sz_int += k2z*sat_sz*dt;
+
+	// sat_ex_int += sat_ex*dt;
+	// sat_ey_int += sat_ey*dt;
+	// sat_ez_int += sat_ez*dt;
+
+	float Ux = 0;
+	float Uy = 0;
+	float Uz = 0;
+
+
+	// Ux =  c1x*(-xp_x(1) +_vel_sp(0)) - xp_x(2) - lamda2x*cbrt(abs(xp_x(0) -_pos_sp(0)))*sat_ex -k1x*sqrt(abs(sx))*sat_sx - sat_sx_int ;
+	// Uy =  c1y*(-xp_y(1) +_vel_sp(1)) - xp_y(2) - lamda2y*cbrt(abs(xp_y(0) -_pos_sp(1)))*sat_ey -k1y*sqrt(abs(sy))*sat_sy - sat_sy_int;
+	Ux =  c1x*(-xp_x(1) +_vel_sp(0)) - xp_x(2) - lamda2x*cbrtf(fabsf(xp_x(0) -_pos_sp(0)))*sat_ex -k1x*sqrtf(fabsf(sx))*sat_sx - sat_sx_int ;
+	Uy =  c1y*(-xp_y(1) +_vel_sp(1)) - xp_y(2) - lamda2y*cbrtf(fabsf(xp_y(0) -_pos_sp(1)))*sat_ey -k1y*sqrtf(fabsf(sy))*sat_sy - sat_sy_int;
+	Uz = c1z*(-_vel(2) +_vel_sp(2)) - k1z*sqrtf(fabsf(sz))*sat_sz - sat_sz_int;
+
+	Uxx = Ux;
+	Uyy = Uy;
+
+		// All nan if not takeoff or have a mission
+	Vector3f U = Vector3f(Ux, Uy, Uz);
+	ControlMath::addIfNotNanVector3f(_acc_sp, U);
+
+	FILE *fichier = fopen("Obser.txt","a");
+	fprintf(fichier,"  %f\t  %f\t  %f\t   %f\t  %f\t   %f\t    %f\t   %f\t 	%f\t  %f\t   %f\t    %f\t   %f\t   %f\t  %f\t   %f\t    %f\t   %f\t   %f\n",(double)xp_x(1) , (double)_vel(0), (double)xp_y(1),
+								(double)_vel(1) , (double)_vel(2) ,(double)xp_x(2),(double)xp_y(2),(double)Ux,
+								(double)Uy,(double)Uz,(double)_pos_sp(0), (double)_pos_sp(1), (double)_pos_sp(2),
+								(double)_pos(0), (double)_pos(1), (double)_pos(2),
+								(double)_vel_sp(0), (double)_vel_sp(1), (double)_vel_sp(2));
+
+	fclose(fichier);
+
+	// Call acceleration control to convert to thrust
+	_accelerationControl();
+
+	// Saturate maximal vertical thrust
+	_thr_sp(2) = math::max(_thr_sp(2), -_lim_thr_max);
+
+	// Get allowed horizontal thrust after prioritizing vertical control
+	const float thrust_max_squared = _lim_thr_max * _lim_thr_max;
+	const float thrust_z_squared = _thr_sp(2) * _thr_sp(2);
+	const float thrust_max_xy_squared = thrust_max_squared - thrust_z_squared;
+	float thrust_max_xy = 0;
+
+	if (thrust_max_xy_squared > 0) {
+		thrust_max_xy = sqrtf(thrust_max_xy_squared);
+	}
+
+	// Saturate thrust in horizontal direction
+	const Vector2f thrust_sp_xy(_thr_sp);
+	const float thrust_sp_xy_norm = thrust_sp_xy.norm();
+
+
+	if (thrust_sp_xy_norm > thrust_max_xy) {
+		_thr_sp.xy() = thrust_sp_xy / thrust_sp_xy_norm * thrust_max_xy;
+	}
 }
 
 void PositionControl::_positionControl()
