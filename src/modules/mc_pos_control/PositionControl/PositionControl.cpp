@@ -203,14 +203,16 @@ void PositionControl::SMC_control(const float dt)
 	Vector3f U = Vector3f(Ux, Uy, Uz);
 	ControlMath::addIfNotNanVector3f(_acc_sp, U);
 
-	FILE *fichier = fopen("Obser.txt","a");
-	fprintf(fichier,"  %f\t  %f\t  %f\t   %f\t  %f\t   %f\t    %f\t   %f\t 	%f\t  %f\t   %f\t    %f\t   %f\t   %f\t  %f\t   %f\t    %f\t   %f\t   %f\n",(double)xp_x(1) , (double)_vel(0), (double)xp_y(1),
-								(double)_vel(1) , (double)_vel(2) ,(double)xp_x(2),(double)xp_y(2),(double)Ux,
-								(double)Uy,(double)Uz,(double)_pos_sp(0), (double)_pos_sp(1), (double)_pos_sp(2),
-								(double)_pos(0), (double)_pos(1), (double)_pos(2),
-								(double)_vel_sp(0), (double)_vel_sp(1), (double)_vel_sp(2));
+	/* Only for Simulation */
+	// FILE *fichier = fopen("Obser.txt","a");
+	// fprintf(fichier,"  %f\t  %f\t  %f\t   %f\t  %f\t   %f\t    %f\t   %f\t 	%f\t  %f\t   %f\t    %f\t   %f\t   %f\t  %f\t   %f\t    %f\t   %f\t   %f\n",(double)xp_x(1) , (double)_vel(0), (double)xp_y(1),
+	// 							(double)_vel(1) , (double)_vel(2) ,(double)xp_x(2),(double)xp_y(2),(double)Ux,
+	// 							(double)Uy,(double)Uz,(double)_pos_sp(0), (double)_pos_sp(1), (double)_pos_sp(2),
+	// 							(double)_pos(0), (double)_pos(1), (double)_pos(2),
+	// 							(double)_vel_sp(0), (double)_vel_sp(1), (double)_vel_sp(2));
 
-	fclose(fichier);
+	// fclose(fichier);
+	/* ------------------- */
 
 	// Call acceleration control to convert to thrust
 	_accelerationControl();
