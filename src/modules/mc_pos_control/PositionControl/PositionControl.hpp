@@ -94,6 +94,15 @@ public:
 	void setVelocityGains(const matrix::Vector3f &P, const matrix::Vector3f &I, const matrix::Vector3f &D);
 
 	/**
+	 * Set the velocity control gains
+	 * @param C 3D vector of proportional gains for x,y,z axis
+	 * @param K1 3D vector of integral gains
+	 * @param K2 3D vector of derivative gains
+	 * @param EPSI Tanh switching coefficient 
+	 */
+	void setSMCVelGains(const matrix::Vector3f &C, const matrix::Vector3f &K1, const matrix::Vector3f &K2, const float &EPSI);
+
+	/**
 	 * Set the maximum velocity to execute with feed forward and position control
 	 * @param vel_horizontal horizontal velocity limit
 	 * @param vel_up upwards velocity limit
@@ -161,14 +170,7 @@ public:
 	 * Set the integral term in xy to 0.
 	 * @see _vel_int
 	 */
-	void resetIntegral() {
-		_vel_int.setZero();
-		sat_sx_int=0;
-		sat_sy_int=0;
-		sat_sz_int=0;
-		sat_ex_int=0;
-		sat_ey_int=0;
-	}
+	void resetIntegral() { _vel_int.setZero(); }
 
 	/**
 	 * If set, the tilt setpoint is computed by assuming no vertical acceleration
@@ -242,6 +244,12 @@ private:
 	float _yawspeed_sp{}; /** desired yaw-speed */
 
 	// Custom Controller
+	// SMC Velocity Gains
+	matrix::Vector3f _gain_vel_c{0.1f, 0.1f, 0.1f}; // Coefficient for error term in sliding surface
+	matrix::Vector3f _gain_vel_k1{1.3f, 1.3f, 1.3f}; // Gain for tanh term
+	matrix::Vector3f _gain_vel_k2{2.5f, 2.5f, 2.5f}; // Gain for linear term
+	float _gain_vel_epsi = 0.5f;			  				  // Scaling factor for tanh
+
 	// Observator
 	float Uxx{};
 	float Uyy{};
@@ -254,8 +262,4 @@ private:
 	float sat_ez_int{};
 	matrix::Vector3f xp_x; /**< state estimated  */
 	matrix::Vector3f xp_y; /**< state estimated */
-	// Low pass filter
-	float Statey{NAN};
-	float Statex{NAN};
-
 };
